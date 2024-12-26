@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>To-Do List with Alarm and Edit</title>
+    <style>
+        /* General Styles */
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f7fa;
+            color: #333;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        .container {
+            background: #ffffff;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            border-radius: 10px;
+            padding: 20px 30px;
+            max-width: 400px;
+            width: 100%;
+            text-align: center;
+        }
+
+        h1 {
+            font-size: 1.8rem;
+            color: #555;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #e3e3e3;
+            padding-bottom: 10px;
+        }
+
+        input[type="text"],
+        input[type="time"],
+        input[type="date"] {
+            width: calc(100% - 50px);
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            outline: none;
+            font-size: 1rem;
+            margin-bottom: 10px;
+        }
+
+        button {
+            padding: 10px 20px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: background-color 0.3s ease;
+        }
+
+        button:hover {
+            background-color: #0056b3;
+        }
+
+        ul {
+            list-style-type: none;
+            padding: 0;
+            margin: 20px 0 0;
+        }
+
+        li {
+            background: #f9f9f9;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 10px;
+            margin: 5px 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        li:hover {
+            transform: scale(1.02);
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+        }
+
+        li.completed {
+            text-decoration: line-through;
+            color: #999;
+        }
+
+        .delete-btn, .edit-btn {
+            background-color: #ff5555;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            padding: 5px 10px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+            margin-left: 10px;
+        }
+
+        .edit-btn {
+            background-color: #28a745;
+        }
+
+        .edit-btn:hover {
+            background-color: #218838;
+        }
+
+        .delete-btn:hover {
+            background-color: #ff3333;
+        }
+
+        .time-day {
+            font-size: 0.8rem;
+            color: #777;
+            margin-left: 10px;
+        }
+
+        .empty-state {
+            font-size: 1rem;
+            color: #777;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>To-Do List </h1>
+        <input type="text" id="taskInput" placeholder="Add a new task" />
+        <input type="date" id="dateInput" />
+        <input type="time" id="timeInput" />
+        <button onclick="addTask()">Add Task</button>
+        <button onclick="setAlarm()">Set Alarm</button>
+        <ul id="taskList"></ul>
+        <div id="emptyState" class="empty-state">No tasks yet. Add some!</div>
+    </div>
+
+    <script>
+        // Request permission for notifications
+        if (Notification.permission !== "granted") {
+            Notification.requestPermission();
+        }
+
+        let alarmTime = null;
+        let taskText = "";
+        let editingTask = null; // Track the task being edited
+
+        document.addEventListener("DOMContentLoaded", loadTasks);
+
+        function addTask() {
+            const taskInput = document.getElementById("taskInput");
+            const dateInput = document.getElementById("dateInput");
+            const timeInput = document.getElementById("timeInput");
+
+            taskText = taskInput.value.trim();
+            const dateValue = dateInput.value.trim();
+            const timeValue = timeInput.value.trim();
+
+            if (taskText === "" || dateValue === "" || timeValue === "") return;
+
+            const taskList = document.getElementById("taskList");
+            const formattedDate = new Date(dateValue).toLocaleDateString(); // format the date
+            const li = createTaskElement(taskText, formattedDate, timeValue);
+
+            if (editingTask) {
+                // Update the existing task if in editing mode
+                editingTask.querySelector("span").textContent = `${taskText} (${formattedDate} ${timeValue})`;
+                editingTask = null;
+            } else {
+                taskList.appendChild(li);
+            }
+
+            saveTasks();
+
+            taskInput.value = "";
+            dateInput.value = "";
+            timeInput.value = "";
+            updateEmptyState();
+        }
+
+        function createTaskElement(taskText, date, time, completed = false) {
+            const li = document.createElement("li");
+            if (completed) li.classList.add("completed");
+            li.innerHTML = `
+                <span>${taskText} <span class="time-day">(${date} ${time})</span></span>
+                <button class="edit-btn" onclick="editTask(this)">Edit</button>
+                <button class="delete-btn" onclick="deleteTask(this)">Delete</button>
+            `;
+            li.addEventListener("click", () => {
+                li.classList.toggle("completed");
+                saveTasks();
+            });
+            return li;
+        }
+
+        function deleteTask(button) {
+            const li = button.parentElement;
+            li.remove();
+            saveTasks();
+            updateEmptyState();
+        }
+
+        function editTask(button) {
+            const li = button.parentElement;
+            const taskText = li.querySelector("span").textContent.split(" ")[0];
+            const dateTime = li.querySelector(".time-day").textContent.slice(1, -1); // Remove parentheses
+            const [date, time] = dateTime.split(" ");
+
+            document.getElementById("taskInput").value = taskText;
+            document.getElementById("dateInput").value = date;
+            document.getElementById("timeInput").value = time;
+
+            editingTask = li; // Set the task as the one being edited
+        }
+
+        function saveTasks() {
+            const tasks = [];
+            document.querySelectorAll("#taskList li").forEach(li => {
+                const taskText = li.querySelector("span").textContent;
+                const timeDay = li.querySelector(".time-day").textContent.slice(1, -1); // Remove parentheses
+                const [date, time] = timeDay.split(" ");
+                tasks.push({
+                    text: taskText.replace(`(${timeDay})`, "").trim(),
+                    date: date,
+                    time: time,
+                    completed: li.classList.contains("completed")
+                });
+            });
+            localStorage.setItem("tasks", JSON.stringify(tasks));
+        }
+
+        function loadTasks() {
+            const tasks = JSON.parse(localStorage.getItem("tasks")) || [];
+            const taskList = document.getElementById("taskList");
+            tasks.forEach(task => {
+                const li = createTaskElement(task.text, task.date, task.time, task.completed);
+                taskList.appendChild(li);
+            });
+            updateEmptyState();
+        }
+
+        function updateEmptyState() {
+            const taskList = document.getElementById("taskList");
+            const emptyState = document.getElementById("emptyState");
+            emptyState.style.display = taskList.children.length ? "none" : "block";
+        }
+
+        // Set Alarm for the specified task
+        function setAlarm() {
+            const dateInput = document.getElementById("dateInput");
+            const timeInput = document.getElementById("timeInput");
+
+            if (taskText === "" || dateInput.value.trim() === "" || timeInput.value.trim() === "") {
+                alert("Please fill in the task details first.");
+                return;
+            }
+
+            const taskDate = new Date(dateInput.value + ' ' + timeInput.value).getTime();
+            const currentTime = new Date().getTime();
+            const timeDifference = taskDate - currentTime;
+
+            if (timeDifference <= 0) {
+                alert("The selected time is in the past. Please select a future time.");
+                return;
+            }
+
+            // Set timeout for the alarm
+            setTimeout(() => {
+                triggerAlarm(taskText);
+            }, timeDifference);
+
+            alert(`Alarm set for "${taskText}" at ${new Date(taskDate).toLocaleString()}`);
+        }
+
+        function triggerAlarm(taskText) {
+            // Show notification
+            if (Notification.permission === "granted") {
+                new Notification("Task Reminder", {
+                    body: `It's time to: ${taskText}`,
+                    icon: 'https://via.placeholder.com/50', // Optional: add an icon
+                });
+            } else {
+                alert(`It's time to: ${taskText}`);
+            }
+        }
+    </script>
+</body>
+</html>
